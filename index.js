@@ -12,8 +12,11 @@ const limiter = rateLimit({
   limit: 60,
   skip: (req) => {
     const origin = req.get("origin") || req.get("referer") || "";
-    // Whitelist IEEE BIT Mesra website - no rate limiting for this domain
-    return origin.includes("ieeebitmesra.in");
+    // Whitelist IEEE BIT Mesra websites - no rate limiting for these domains
+    return (
+      origin.includes("ieeebitmesra.in") ||
+      origin.includes("ieee-website-nine-delta.vercel.app")
+    );
   },
 });
 
