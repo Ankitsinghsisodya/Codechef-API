@@ -35,10 +35,32 @@ app.get("/rating/:handle", (req, res) => {
 
 const fecher = async (handle) => {
   try {
-    const resdata = await fetch(`https://www.codechef.com/users/${handle}`);
+    // Add timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+    const resdata = await fetch(`https://www.codechef.com/users/${handle}`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
     if (resdata.status == 200) {
       let d = await resdata.text();
       let data = { data: d };
+
+      // Validate that we got a proper user page, not an error page
+      if (
+        !data.data.includes("var userDailySubmissionsStats =") ||
+        !data.data.includes("var all_rating =")
+      ) {
+        console.log(`Invalid page content for handle: ${handle}`);
+        return {
+          success: false,
+          status: 503,
+          error: "CodeChef returned invalid page content",
+        };
+      }
+
       let heatMapDataCursour1 =
         data.data.search("var userDailySubmissionsStats =") +
         "var userDailySubmissionsStats =".length;
@@ -47,12 +69,41 @@ const fecher = async (handle) => {
         heatMapDataCursour1,
         heatMapDataCursour2
       );
-      // console.log(heatDataString)
-      let headMapData = JSON.parse(heatDataString);
+
+      // Safely parse JSON with error handling
+      let headMapData, ratingData;
+      try {
+        headMapData = JSON.parse(heatDataString);
+      } catch (parseErr) {
+        console.log(
+          `Failed to parse heatmap data for ${handle}:`,
+          parseErr.message
+        );
+        return {
+          success: false,
+          status: 503,
+          error: "Failed to parse heatmap data",
+        };
+      }
+
       let allRating =
         data.data.search("var all_rating = ") + "var all_rating = ".length;
       let allRating2 = data.data.search("var current_user_rating =") - 6;
-      let ratingData = JSON.parse(data.data.substring(allRating, allRating2));
+
+      try {
+        ratingData = JSON.parse(data.data.substring(allRating, allRating2));
+      } catch (parseErr) {
+        console.log(
+          `Failed to parse rating data for ${handle}:`,
+          parseErr.message
+        );
+        return {
+          success: false,
+          status: 503,
+          error: "Failed to parse rating data",
+        };
+      }
+
       let dom = new JSDOM(data.data);
       let document = dom.window.document;
       return {
@@ -88,6 +139,15 @@ const fecher = async (handle) => {
       return { success: false, status: resdata.status };
     }
   } catch (e) {
+    // Handle timeout/abort errors specifically
+    if (e.name === "AbortError") {
+      console.log(`Request timeout for handle: ${handle}`);
+      return {
+        success: false,
+        status: 408,
+        error: "Request to CodeChef timed out",
+      };
+    }
     console.log(e);
     return { success: false, status: 404 };
   }
