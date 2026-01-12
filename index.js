@@ -10,7 +10,12 @@ const app = express();
 const limiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 60,
-})
+  skip: (req) => {
+    const origin = req.get("origin") || req.get("referer") || "";
+    // Whitelist IEEE BIT Mesra website - no rate limiting for this domain
+    return origin.includes("ieeebitmesra.in");
+  },
+});
 
 app.use(limiter);
 app.use(cors());
@@ -25,14 +30,10 @@ app.get("/rating/:handle", (req, res) => {
   res.render("rating", { handle: req.params.handle });
 });
 
-
 const fecher = async (handle) => {
   try {
-    const resdata = await fetch(
-      `https://www.codechef.com/users/${handle}`
-    );
+    const resdata = await fetch(`https://www.codechef.com/users/${handle}`);
     if (resdata.status == 200) {
-
       let d = await resdata.text();
       let data = { data: d };
       let heatMapDataCursour1 =
@@ -63,7 +64,8 @@ const fecher = async (handle) => {
         ),
         highestRating: parseInt(
           document
-            .querySelector(".rating-number")?.parentNode?.children[4]?.textContent?.split("Rating")[1]
+            .querySelector(".rating-number")
+            ?.parentNode?.children[4]?.textContent?.split("Rating")[1]
         ),
         countryFlag: document.querySelector(".user-country-flag").src,
         countryName: document.querySelector(".user-country-name").textContent,
@@ -79,30 +81,38 @@ const fecher = async (handle) => {
         heatMap: headMapData,
         ratingData,
       };
-    }
-    else {
-      return { success: false, status: resdata.status }
+    } else {
+      return { success: false, status: resdata.status };
     }
   } catch (e) {
-    console.log(e)
-    return { success: false, status: 404 }
+    console.log(e);
+    return { success: false, status: 404 };
   }
-}
+};
 
 app.get("/handle/:handle", async (req, res) => {
   try {
     if (req.params.handle === "favicon.ico")
-      res.send({ success: false, error: 'invalid handle' });
+      res.send({ success: false, error: "invalid handle" });
     let handle = req.params.handle;
     let resd = await fecher(handle);
     while (resd.status == 429) {
-      for (let i = 0; i < 1000000; i++) { }
+      for (let i = 0; i < 1000000; i++) {}
       resd = await fecher(handle);
     }
-    res.send(resd)
+    res.send(resd);
   } catch (err) {
     res.send({ success: false, error: err });
   }
+});
+
+// Health check endpoint for Render
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
 });
 
 app.get("/", (req, res) => {
